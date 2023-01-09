@@ -8,6 +8,7 @@ import time
 from contextlib import contextmanager
 from types import TracebackType
 from typing import Any, Callable, List, Sequence, Tuple, Union, Generator, IO, AnyStr, Dict, Optional
+from typing_extensions import Protocol, runtime_checkable
 
 import typeguard
 from typing_extensions import Type
@@ -165,6 +166,11 @@ def wtime_to_minutes(time_string: str) -> int:
     return total_mins
 
 
+@runtime_checkable
+class IsWrapper(Protocol):
+    __wrapped__: Callable
+
+
 class RepresentationMixin:
     """A mixin class for adding a __repr__ method.
 
@@ -191,8 +197,12 @@ class RepresentationMixin:
     """
     __max_width__ = 80
 
+    # vs PR 1846: this has a type: ignore where I have more invasively changed the code to
+    # use type(self).__init__ and not checked if that works
     def __repr__(self) -> str:
         init = self.__init__  # type: ignore[misc]
+        # init: Any  # to override something I don't understand with myppy vs the init, iswrapper test below
+        # init = type(self).__init__  # does this change from self.__init__ work?
 
         # This test looks for a single layer of wrapping performed by
         # functools.update_wrapper, commonly used in decorators. This will
@@ -202,7 +212,7 @@ class RepresentationMixin:
         # decorators, or cope with other decorators which do not use
         # functools.update_wrapper.
 
-        if hasattr(init, '__wrapped__'):
+        if isinstance(init, IsWrapper):
             init = init.__wrapped__
 
         argspec = inspect.getfullargspec(init)
@@ -291,7 +301,8 @@ class Timer:
 
     """
 
-    def __init__(self, callback: Callable, *args: Any, interval: int = 5, name: Optional[str] = None) -> None:
+    # TODO: some kind of dependentish type here? eg Callable[X] and args has type X?
+    def __init__(self, callback: Callable, *args: Tuple[Any, ...], interval: float = 5, name: Optional[str] = None) -> None:
         """Initialize the Timer object.
         We start the timer thread here
 

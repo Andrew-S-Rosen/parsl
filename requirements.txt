@@ -2,7 +2,7 @@ pyzmq>=17.1.2
 typeguard>=4,<5
 typing-extensions>=4.6,<5
 six
-globus-sdk
+globus-sdk>=3,<4
 dill
 tblib
 requests

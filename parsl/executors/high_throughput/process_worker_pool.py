@@ -19,8 +19,9 @@ import json
 import psutil
 import multiprocessing
 
-from parsl.process_loggers import wrap_with_logs
+from typing import Any, Dict
 
+from parsl.process_loggers import wrap_with_logs
 from parsl.version import VERSION as PARSL_VERSION
 from parsl.app.errors import RemoteExceptionWrapper
 from parsl.executors.high_throughput.errors import WorkerLost
@@ -28,9 +29,12 @@ from parsl.executors.high_throughput.probe import probe_addresses
 from parsl.multiprocessing import ForkProcess as mpForkProcess
 from parsl.multiprocessing import SpawnProcess as mpSpawnProcess
 
-from parsl.multiprocessing import SizedQueue as mpQueue
+from parsl.multiprocessing import sizedQueue
+from multiprocessing import Queue
 
 from parsl.serialize import unpack_apply_message, serialize
+
+logger = logging.getLogger("parsl")
 
 HEARTBEAT_CODE = (2 ** 32) - 1
 
@@ -188,6 +192,7 @@ class Manager:
 
         # Determine which start method to use
         start_method = start_method.lower()
+        self.mpProcess: Any  # some protocol abstraction of two process types or thread...
         if start_method == "fork":
             self.mpProcess = mpForkProcess
         elif start_method == "spawn":
@@ -197,9 +202,14 @@ class Manager:
         else:
             raise ValueError(f'HTEx does not support start method: "{start_method}"')
 
-        self.pending_task_queue = mpQueue()
-        self.pending_result_queue = mpQueue()
-        self.ready_worker_queue = mpQueue()
+        self.pending_task_queue: Queue[Any]
+        self.pending_task_queue = sizedQueue()
+
+        self.pending_result_queue: Queue[Any]
+        self.pending_result_queue = sizedQueue()
+
+        self.ready_worker_queue: Queue[Any]
+        self.ready_worker_queue = sizedQueue()
 
         self.max_queue_size = self.prefetch_capacity + self.worker_count
 
@@ -412,15 +422,25 @@ class Manager:
 
         logger.critical("Exiting")
 
-    def start(self):
+    def start(self) -> None:
         """ Start the worker processes.
 
         TODO: Move task receiving to a thread
         """
         start = time.time()
         self._kill_event = threading.Event()
+
+        # When upgrading from mypy 0.961 to 0.981, this change happens:
+
+        # multiprocessing.Manager().dict() according to mypy, does not
+        # return a Dict, but instead a multiprocessing.managers.DictProxy
+        # parsl/executors/high_throughput/process_worker_pool.py:416: note: Revealed type is "multiprocessing.managers.DictProxy[Any, Any]"
+        #
+        # but this type inference gets figured out, so no need for explicit annotation,
+        # I think
         self._tasks_in_progress = multiprocessing.Manager().dict()
 
+        self.procs: Dict[Any, Any]
         self.procs = {}
         for worker_id in range(self.worker_count):
             p = self.mpProcess(target=worker,
@@ -507,7 +527,7 @@ def execute_task(bufs):
 
 
 @wrap_with_logs(target="worker_log")
-def worker(worker_id, pool_id, pool_size, task_queue, result_queue, worker_queue, tasks_in_progress, cpu_affinity, accelerator: Optional[str]):
+def worker(worker_id, pool_id, pool_size, task_queue, result_queue, worker_queue, tasks_in_progress, cpu_affinity, accelerator: Optional[str]) -> None:
     """
 
     Put request token into queue

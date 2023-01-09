@@ -6,14 +6,22 @@ import multiprocessing
 import multiprocessing.queues
 import platform
 
-from typing import Callable, Type
-
 logger = logging.getLogger(__name__)
 
-# maybe ForkProcess should be: Callable[..., Process] so as to make
-# it clear that it returns a Process always to the type checker?
-ForkProcess: Type = multiprocessing.get_context('fork').Process
-SpawnProcess: Type = multiprocessing.get_context('spawn').Process
+ForkProcess = multiprocessing.context.ForkProcess
+SpawnProcess = multiprocessing.context.SpawnProcess
+
+
+def forkProcess(*args, **kwargs) -> ForkProcess:
+    P = multiprocessing.get_context('fork').Process
+    # reveal_type(P)
+    return P(*args, **kwargs)
+
+
+def spawnProcess(*args, **kwargs) -> SpawnProcess:
+    P = multiprocessing.get_context('spawn').Process
+    # reveal_type(P)
+    return P(*args, **kwargs)
 
 
 class MacSafeQueue(multiprocessing.queues.Queue):
@@ -54,11 +62,10 @@ class MacSafeQueue(multiprocessing.queues.Queue):
 # SizedQueue should be constructable using the same calling
 # convention as multiprocessing.Queue but that entire signature
 # isn't expressible in mypy 0.790
-SizedQueue: Callable[..., multiprocessing.Queue]
+# SizedQueue: Callable[..., multiprocessing.Queue]
 
-
-if platform.system() != 'Darwin':
-    import multiprocessing
-    SizedQueue = multiprocessing.Queue
-else:
-    SizedQueue = MacSafeQueue
+def sizedQueue(*args, **kwargs) -> multiprocessing.queues.Queue:
+    if platform.system() != 'Darwin':
+        return multiprocessing.Queue(*args, **kwargs)
+    else:
+        return MacSafeQueue(*args, **kwargs)

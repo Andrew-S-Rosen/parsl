@@ -1,6 +1,6 @@
 import logging
 from concurrent.futures import Future
-from typing import Any, Callable, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, List, Optional, Sequence, TYPE_CHECKING
 
 from parsl.app.futures import DataFuture
 from parsl.data_provider.files import File
@@ -39,7 +39,8 @@ class DataManager:
         """This will give staging providers the chance to wrap (or replace entirely!) the task function."""
         executor_obj = self.dfk.executors[executor]
         if hasattr(executor_obj, "storage_access") and executor_obj.storage_access is not None:
-            storage_access = executor_obj.storage_access  # type: List[Staging]
+            storage_access: Sequence[Staging]
+            storage_access = executor_obj.storage_access
         else:
             storage_access = default_staging
 
