@@ -655,7 +655,6 @@ class WorkQueueExecutor(BlockProviderExecutor, putils.RepresentationMixin):
         # Start scaling in/out
         logger.debug("Starting WorkQueueExecutor with provider: %s", self.provider)
         self._patch_providers()
-
         if hasattr(self.provider, 'init_blocks'):
             try:
                 self.scale_out(blocks=self.provider.init_blocks)
@@ -699,6 +698,8 @@ class WorkQueueExecutor(BlockProviderExecutor, putils.RepresentationMixin):
         """
         logger.debug("Work Queue shutdown started")
         self.should_stop.value = True
+        # issue https://github.com/python/typeshed/issues/8799
+        # from mypy 0.981 onwards
 
         # Remove the workers that are still going
         kill_ids = [self.blocks[block] for block in self.blocks.keys()]
@@ -721,6 +722,8 @@ class WorkQueueExecutor(BlockProviderExecutor, putils.RepresentationMixin):
         logger.debug("Starting Collector Thread")
         try:
             while not self.should_stop.value:
+                # issue https://github.com/python/typeshed/issues/8799
+                # from mypy 0.981 onwards
                 if not self.submit_process.is_alive():
                     raise ExecutorError(self, "Workqueue Submit Process is not alive")
 
