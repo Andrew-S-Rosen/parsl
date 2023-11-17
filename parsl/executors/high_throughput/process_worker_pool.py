@@ -419,7 +419,8 @@ class Manager:
         """
         start = time.time()
         self._kill_event = threading.Event()
-        self._tasks_in_progress = multiprocessing.Manager().dict()
+        self._mp_manager = multiprocessing.Manager()  # Starts a server process
+        self._tasks_in_progress = self._mp_manager.dict()
 
         self.procs = {}
         for worker_id in range(self.worker_count):
@@ -462,6 +463,7 @@ class Manager:
         self._task_puller_thread.join()
         self._result_pusher_thread.join()
         self._worker_watchdog_thread.join()
+        self._mp_manager.shutdown()
         for proc_id in self.procs:
             self.procs[proc_id].terminate()
             logger.critical("Terminating worker {}: is_alive()={}".format(self.procs[proc_id],
