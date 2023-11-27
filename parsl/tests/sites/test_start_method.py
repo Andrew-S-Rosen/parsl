@@ -1,4 +1,5 @@
 import os
+import psutil
 from contextlib import contextmanager
 
 from pytest import mark, raises
@@ -43,13 +44,20 @@ def config(start_method: str, **kwargs):
 
 
 @mark.local
-@mark.parametrize("start_method", ["spawn", "fork", "thread"])
-def test_spawn_method(start_method: str):
-    with config(start_method):
-        # Get the PID for the child function as a way of making sure it launches
-        future = get_pid()
-        remote_pid = future.result()
-        assert remote_pid != os.getpid()
+@mark.parametrize("start_method", ["fork", "thread"])
+def test_start_method(start_method: str):
+    with config(start_method) as dfk:
+        worker_pid = get_pid().result()
+
+        htex: HighThroughputExecutor = dfk.config.executors[0]
+        submit_pid = int(next(iter(htex.provider.resources.values()))["remote_pid"])
+        submit_proc = psutil.Process(submit_pid)
+        manager_pid = submit_proc.children(recursive=True)[2].pid
+
+        if start_method == "thread":
+            assert worker_pid == manager_pid
+        else:
+            assert worker_pid != manager_pid
 
 
 @mark.local
