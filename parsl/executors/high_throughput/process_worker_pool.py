@@ -438,12 +438,15 @@ class Manager:
         self._task_puller_thread.join()
         self._result_pusher_thread.join()
         self._worker_watchdog_thread.join()
-        for proc_id in self.procs:
-            self.procs[proc_id].terminate()
-            logger.critical("Terminating worker {}: is_alive()={}".format(self.procs[proc_id],
-                                                                          self.procs[proc_id].is_alive()))
-            self.procs[proc_id].join()
-            logger.debug("Worker {} joined successfully".format(self.procs[proc_id]))
+
+        # Terminate workers if launched as separate processes
+        if not isinstance(self.mpProcess, Thread):
+            for proc_id in self.procs:
+                self.procs[proc_id].terminate()
+                logger.critical("Terminating worker {}: is_alive()={}".format(self.procs[proc_id],
+                                                                            self.procs[proc_id].is_alive()))
+                self.procs[proc_id].join()
+                logger.debug("Worker {} joined successfully".format(self.procs[proc_id]))
 
         self.task_incoming.close()
         self.result_outgoing.close()
