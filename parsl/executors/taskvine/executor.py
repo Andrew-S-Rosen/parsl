@@ -40,6 +40,7 @@ from parsl.executors.taskvine.utils import ParslTaskToVine
 from parsl.executors.taskvine.utils import ParslFileToVine
 from parsl.executors.taskvine.manager import _taskvine_submit_wait
 from parsl.executors.taskvine.factory import _taskvine_factory
+from parsl.multiprocessing import ForkProcess
 
 # Import other libraries
 import typeguard
@@ -248,17 +249,17 @@ class TaskVineExecutor(BlockProviderExecutor, putils.RepresentationMixin):
                                  "finished_task_queue": self._finished_task_queue,
                                  "should_stop": self._should_stop,
                                  "manager_config": self.manager_config}
-        self._submit_process = multiprocessing.Process(target=_taskvine_submit_wait,
-                                                       name="TaskVine-Submit-Process",
-                                                       kwargs=submit_process_kwargs)
+        self._submit_process = ForkProcess(target=_taskvine_submit_wait,
+                                           name="TaskVine-Submit-Process",
+                                           kwargs=submit_process_kwargs)
 
         # Create a process to run the TaskVine factory if enabled.
         if self.worker_launch_method == 'factory':
             factory_process_kwargs = {"should_stop": self._should_stop,
                                       "factory_config": self.factory_config}
-            self._factory_process = multiprocessing.Process(target=_taskvine_factory,
-                                                            name="TaskVine-Factory-Process",
-                                                            kwargs=factory_process_kwargs)
+            self._factory_process = ForkProcess(target=_taskvine_factory,
+                                                name="TaskVine-Factory-Process",
+                                                kwargs=factory_process_kwargs)
 
         # Run thread to collect results and set tasks' futures.
         self._collector_thread = threading.Thread(target=self._collect_taskvine_results,

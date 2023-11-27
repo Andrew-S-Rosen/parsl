@@ -30,6 +30,7 @@ from parsl.executors.status_handling import BlockProviderExecutor
 from parsl.providers.base import ExecutionProvider
 from parsl.providers import LocalProvider, CondorProvider
 from parsl.executors.workqueue import exec_parsl_function
+from parsl.multiprocessing import ForkProcess
 from parsl.process_loggers import wrap_with_logs
 from parsl.utils import setproctitle
 
@@ -344,9 +345,9 @@ class WorkQueueExecutor(BlockProviderExecutor, putils.RepresentationMixin):
                                  "port_mailbox": self._port_mailbox,
                                  "coprocess": self.coprocess
                                  }
-        self.submit_process = multiprocessing.Process(target=_work_queue_submit_wait,
-                                                      name="WorkQueue-Submit-Process",
-                                                      kwargs=submit_process_kwargs)
+        self.submit_process = ForkProcess(target=_work_queue_submit_wait,
+                                          name="WorkQueue-Submit-Process",
+                                          kwargs=submit_process_kwargs)
 
         self.collector_thread = threading.Thread(target=self._collect_work_queue_results,
                                                  name="WorkQueue-collector-thread")

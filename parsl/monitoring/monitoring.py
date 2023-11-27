@@ -11,7 +11,7 @@ import queue
 import parsl.monitoring.remote
 
 from parsl.multiprocessing import ForkProcess, SizedQueue
-from multiprocessing import Process, Queue
+from multiprocessing import Queue
 from parsl.utils import RepresentationMixin
 from parsl.process_loggers import wrap_with_logs
 from parsl.utils import setproctitle
@@ -212,11 +212,10 @@ class MonitoringHub(RepresentationMixin):
         self.dbm_proc.start()
         self.logger.info("Started the router process {} and DBM process {}".format(self.router_proc.pid, self.dbm_proc.pid))
 
-        self.filesystem_proc = Process(target=filesystem_receiver,
-                                       args=(self.logdir, self.resource_msgs, run_dir),
-                                       name="Monitoring-Filesystem-Process",
-                                       daemon=True
-                                       )
+        self.filesystem_proc = ForkProcess(target=filesystem_receiver,
+                                           args=(self.logdir, self.resource_msgs, run_dir),
+                                           name="Monitoring-Filesystem-Process",
+                                           daemon=True)
         self.filesystem_proc.start()
         self.logger.info(f"Started filesystem radio receiver process {self.filesystem_proc.pid}")
 

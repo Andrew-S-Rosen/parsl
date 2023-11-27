@@ -32,10 +32,6 @@ from parsl.data_provider.files import File
 
 from parsl.dataflow.dflow import DataFlowKernel, DataFlowKernelLoader
 
-import multiprocessing as _multiprocessing
-if platform.system() == 'Darwin':
-    _multiprocessing.set_start_method('fork', force=True)
-
 __author__ = 'The Parsl Team'
 __version__ = VERSION
 
