@@ -720,7 +720,8 @@ if __name__ == "__main__":
                           heartbeat_period=int(args.hb_period),
                           poll_period=int(args.poll),
                           cpu_affinity=args.cpu_affinity,
-                          available_accelerators=args.available_accelerators)
+                          available_accelerators=args.available_accelerators,
+                          start_method=args.start_method)
         manager.start()
 
     except Exception:
