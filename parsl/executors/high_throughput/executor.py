@@ -206,7 +206,7 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
                  max_workers: Union[int, float] = float('inf'),
                  cpu_affinity: str = 'none',
                  available_accelerators: Union[int, Sequence[str]] = (),
-                 start_method: str = 'spawn',
+                 start_method: str = 'fork',
                  prefetch_capacity: int = 0,
                  heartbeat_threshold: int = 120,
                  heartbeat_period: int = 30,
