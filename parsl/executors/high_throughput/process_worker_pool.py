@@ -24,6 +24,7 @@ from parsl.process_loggers import wrap_with_logs
 
 from parsl.version import VERSION as PARSL_VERSION
 from parsl.app.errors import RemoteExceptionWrapper
+from parsl.curvezmq import CurveZMQClient
 from parsl.executors.high_throughput.errors import WorkerLost
 from parsl.executors.high_throughput.probe import probe_addresses
 from parsl.multiprocessing import SpawnContext
@@ -63,7 +64,9 @@ class Manager:
                  heartbeat_period,
                  poll_period,
                  cpu_affinity,
-                 available_accelerators: Sequence[str]):
+                 available_accelerators: Sequence[str],
+                 run_dir: str,
+                 logdir: str):
         """
         Parameters
         ----------
@@ -118,6 +121,12 @@ class Manager:
         available_accelerators: list of str
             List of accelerators available to the workers.
 
+        run_dir : str
+            Path to run directory.
+
+        logdir : str
+             Logs and temp files go to this directory path.
+
         """
 
         logger.info("Manager started")
@@ -137,15 +146,17 @@ class Manager:
             print("Failed to find a viable address to connect to interchange. Exiting")
             exit(5)
 
-        self.context = zmq.Context()
-        self.task_incoming = self.context.socket(zmq.DEALER)
+        self.run_dir = run_dir
+        self.logdir = logdir
+        self.zmq_client = CurveZMQClient(self.run_dir)
+        self.task_incoming = self.zmq_client.socket(zmq.DEALER)
         self.task_incoming.setsockopt(zmq.IDENTITY, uid.encode('utf-8'))
         # Linger is set to 0, so that the manager can exit even when there might be
         # messages in the pipe
         self.task_incoming.setsockopt(zmq.LINGER, 0)
         self.task_incoming.connect(task_q_url)
 
-        self.result_outgoing = self.context.socket(zmq.DEALER)
+        self.result_outgoing = self.zmq_client.socket(zmq.DEALER)
         self.result_outgoing.setsockopt(zmq.IDENTITY, uid.encode('utf-8'))
         self.result_outgoing.setsockopt(zmq.LINGER, 0)
         self.result_outgoing.connect(result_q_url)
@@ -466,9 +477,7 @@ class Manager:
             self.procs[proc_id].join()
             logger.debug("Worker {} joined successfully".format(self.procs[proc_id]))
 
-        self.task_incoming.close()
-        self.result_outgoing.close()
-        self.context.term()
+        self.zmq_client.term()
         delta = time.time() - start
         logger.info("process_worker_pool ran for {} seconds".format(delta))
         return
@@ -490,7 +499,7 @@ class Manager:
                 self.block_id,
                 self.heartbeat_period,
                 os.getpid(),
-                args.logdir,
+                self.logdir,
                 args.debug,
             ),
             name="HTEX-Worker-{}".format(worker_id),
@@ -703,6 +712,8 @@ if __name__ == "__main__":
                         help="Enable logging at DEBUG level")
     parser.add_argument("-a", "--addresses", default='',
                         help="Comma separated list of addresses at which the interchange could be reached")
+    parser.add_argument("--run_dir", required=True,
+                        help="Path to run directory.")
     parser.add_argument("-l", "--logdir", default="process_worker_pool_logs",
                         help="Process worker pool log directory")
     parser.add_argument("-u", "--uid", default=str(uuid.uuid4()).split('-')[-1],
@@ -746,6 +757,7 @@ if __name__ == "__main__":
 
         logger.info("Python version: {}".format(sys.version))
         logger.info("Debug logging: {}".format(args.debug))
+        logger.info("Run dir: {}".format(args.run_dir))
         logger.info("Log dir: {}".format(args.logdir))
         logger.info("Manager ID: {}".format(args.uid))
         logger.info("Block ID: {}".format(args.block_id))
@@ -777,7 +789,9 @@ if __name__ == "__main__":
                           heartbeat_period=int(args.hb_period),
                           poll_period=int(args.poll),
                           cpu_affinity=args.cpu_affinity,
-                          available_accelerators=args.available_accelerators)
+                          available_accelerators=args.available_accelerators,
+                          run_dir=args.run_dir,
+                          logdir=args.logdir)
         manager.start()
 
     except Exception:

@@ -22,6 +22,7 @@ from parsl.executors.errors import (
     UnsupportedFeatureError
 )
 
+from parsl.curvezmq import CurveZMQClient
 from parsl.executors.status_handling import BlockProviderExecutor
 from parsl.providers.base import ExecutionProvider
 from parsl.data_provider.staging import Staging
@@ -306,6 +307,7 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
                                        heartbeat_period=self.heartbeat_period,
                                        heartbeat_threshold=self.heartbeat_threshold,
                                        poll_period=self.poll_period,
+                                       run_dir=self.run_dir,
                                        logdir=worker_logdir,
                                        cpu_affinity=self.cpu_affinity,
                                        accelerators=" ".join(self.available_accelerators))
@@ -327,9 +329,10 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
     def start(self):
         """Create the Interchange process and connect to it.
         """
-        self.outgoing_q = zmq_pipes.TasksOutgoing("127.0.0.1", self.interchange_port_range)
-        self.incoming_q = zmq_pipes.ResultsIncoming("127.0.0.1", self.interchange_port_range)
-        self.command_client = zmq_pipes.CommandClient("127.0.0.1", self.interchange_port_range)
+        zmq_client = CurveZMQClient(self.run_dir)
+        self.outgoing_q = zmq_pipes.TasksOutgoing(zmq_client, "127.0.0.1", self.interchange_port_range)
+        self.incoming_q = zmq_pipes.ResultsIncoming(zmq_client, "127.0.0.1", self.interchange_port_range)
+        self.command_client = zmq_pipes.CommandClient(zmq_client, self.run_dir, "127.0.0.1", self.interchange_port_range)
 
         self._queue_management_thread = None
         self._start_queue_management_thread()
@@ -450,6 +453,7 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
                                                     "worker_port_range": self.worker_port_range,
                                                     "hub_address": self.hub_address,
                                                     "hub_port": self.hub_port,
+                                                    "run_dir": self.run_dir,
                                                     "logdir": "{}/{}".format(self.run_dir, self.label),
                                                     "heartbeat_threshold": self.heartbeat_threshold,
                                                     "poll_period": self.poll_period,

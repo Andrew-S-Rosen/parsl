@@ -4,24 +4,31 @@ import zmq
 import logging
 import threading
 
+from parsl.curvezmq import CurveZMQClient
+
 logger = logging.getLogger(__name__)
 
 
 class CommandClient:
     """ CommandClient
     """
-    def __init__(self, ip_address, port_range):
+    def __init__(self, zmq_client: CurveZMQClient, run_dir: str, ip_address, port_range):
         """
         Parameters
         ----------
 
+        zmq_client: CurveZMQClient
+            CurveZMQ client used to create secure sockets
+        run_dir: str
+            Path to run directory.
         ip_address: str
            IP address of the client (where Parsl runs)
         port_range: tuple(int, int)
            Port range for the comms between client and interchange
 
         """
-        self.context = zmq.Context()
+        self.zmq_client = zmq_client
+        self.run_dir = run_dir
         self.ip_address = ip_address
         self.port_range = port_range
         self.port = None
@@ -33,7 +40,7 @@ class CommandClient:
 
         Upon recreating the socket, we bind to the same port.
         """
-        self.zmq_socket = self.context.socket(zmq.REQ)
+        self.zmq_socket = self.zmq_client.socket(zmq.REQ)
         self.zmq_socket.setsockopt(zmq.LINGER, 0)
         if self.port is None:
             self.port = self.zmq_socket.bind_to_random_port("tcp://{}".format(self.ip_address),
@@ -62,9 +69,8 @@ class CommandClient:
                 except zmq.ZMQError:
                     logger.exception("Potential ZMQ REQ-REP deadlock caught")
                     logger.info("Trying to reestablish context")
-                    self.zmq_socket.close()
-                    self.context.destroy()
-                    self.context = zmq.Context()
+                    self.zmq_client.destroy()
+                    self.zmq_client = CurveZMQClient(self.run_dir)
                     self.create_socket_and_bind()
                 else:
                     break
@@ -76,26 +82,27 @@ class CommandClient:
         return reply
 
     def close(self):
-        self.zmq_socket.close()
-        self.context.term()
+        self.zmq_client.term()
 
 
 class TasksOutgoing:
     """ Outgoing task queue from the executor to the Interchange
     """
-    def __init__(self, ip_address, port_range):
+    def __init__(self, zmq_client: CurveZMQClient, ip_address, port_range):
         """
         Parameters
         ----------
 
+        zmq_client: CurveZMQClient
+            CurveZMQ client used to create secure sockets
         ip_address: str
            IP address of the client (where Parsl runs)
         port_range: tuple(int, int)
            Port range for the comms between client and interchange
 
         """
-        self.context = zmq.Context()
-        self.zmq_socket = self.context.socket(zmq.DEALER)
+        self.zmq_client = zmq_client
+        self.zmq_socket = self.zmq_client.socket(zmq.DEALER)
         self.zmq_socket.set_hwm(0)
         self.port = self.zmq_socket.bind_to_random_port("tcp://{}".format(ip_address),
                                                         min_port=port_range[0],
@@ -126,27 +133,28 @@ class TasksOutgoing:
                 logger.debug("Not sending due to non-ready zmq pipe, timeout: {} ms".format(timeout_ms))
 
     def close(self):
-        self.zmq_socket.close()
-        self.context.term()
+        self.zmq_client.term()
 
 
 class ResultsIncoming:
     """ Incoming results queue from the Interchange to the executor
     """
 
-    def __init__(self, ip_address, port_range):
+    def __init__(self, zmq_client: CurveZMQClient, ip_address, port_range):
         """
         Parameters
         ----------
 
+        zmq_client: CurveZMQClient
+            CurveZMQ client used to create secure sockets
         ip_address: str
            IP address of the client (where Parsl runs)
         port_range: tuple(int, int)
            Port range for the comms between client and interchange
 
         """
-        self.context = zmq.Context()
-        self.results_receiver = self.context.socket(zmq.DEALER)
+        self.zmq_client = zmq_client
+        self.results_receiver = self.zmq_client.socket(zmq.DEALER)
         self.results_receiver.set_hwm(0)
         self.port = self.results_receiver.bind_to_random_port("tcp://{}".format(ip_address),
                                                               min_port=port_range[0],
@@ -159,5 +167,4 @@ class ResultsIncoming:
         return m
 
     def close(self):
-        self.results_receiver.close()
-        self.context.term()
+        self.zmq_client.term()

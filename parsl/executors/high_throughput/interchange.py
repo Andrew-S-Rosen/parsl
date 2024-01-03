@@ -21,6 +21,7 @@ from parsl.version import VERSION as PARSL_VERSION
 from parsl.serialize import serialize as serialize_object
 
 from parsl.app.errors import RemoteExceptionWrapper
+from parsl.curvezmq import CurveZMQServer
 from parsl.executors.high_throughput.manager_record import ManagerRecord
 from parsl.monitoring.message_type import MessageType
 from parsl.process_loggers import wrap_with_logs
@@ -76,6 +77,7 @@ class Interchange:
                  hub_address: Optional[str] = None,
                  hub_port: Optional[int] = None,
                  heartbeat_threshold: int = 60,
+                 run_dir: str = ".",
                  logdir: str = ".",
                  logging_level: int = logging.INFO,
                  poll_period: int = 10,
@@ -111,6 +113,9 @@ class Interchange:
         heartbeat_threshold : int
              Number of seconds since the last heartbeat after which worker is considered lost.
 
+        run_dir : str
+            Path to run directory. Default: '.'
+
         logdir : str
              Parsl log directory paths. Logs and temp files go here. Default: '.'
 
@@ -121,6 +126,7 @@ class Interchange:
              The main thread polling period, in milliseconds. Default: 10ms
 
         """
+        self.run_dir = run_dir
         self.logdir = logdir
         os.makedirs(self.logdir, exist_ok=True)
 
@@ -134,15 +140,15 @@ class Interchange:
 
         logger.info("Attempting connection to client at {} on ports: {},{},{}".format(
             client_address, client_ports[0], client_ports[1], client_ports[2]))
-        self.context = zmq.Context()
-        self.task_incoming = self.context.socket(zmq.DEALER)
+        self.zmq_server = CurveZMQServer(self.run_dir)
+        self.task_incoming = self.zmq_server.socket(zmq.DEALER)
         self.task_incoming.set_hwm(0)
         self.task_incoming.connect("tcp://{}:{}".format(client_address, client_ports[0]))
-        self.results_outgoing = self.context.socket(zmq.DEALER)
+        self.results_outgoing = self.zmq_server.socket(zmq.DEALER)
         self.results_outgoing.set_hwm(0)
         self.results_outgoing.connect("tcp://{}:{}".format(client_address, client_ports[1]))
 
-        self.command_channel = self.context.socket(zmq.REP)
+        self.command_channel = self.zmq_server.socket(zmq.REP)
         self.command_channel.connect("tcp://{}:{}".format(client_address, client_ports[2]))
         logger.info("Connected to client")
 
@@ -155,9 +161,9 @@ class Interchange:
         self.worker_ports = worker_ports
         self.worker_port_range = worker_port_range
 
-        self.task_outgoing = self.context.socket(zmq.ROUTER)
+        self.task_outgoing = self.zmq_server.socket(zmq.ROUTER)
         self.task_outgoing.set_hwm(0)
-        self.results_incoming = self.context.socket(zmq.ROUTER)
+        self.results_incoming = self.zmq_server.socket(zmq.ROUTER)
         self.results_incoming.set_hwm(0)
 
         if self.worker_ports:
@@ -241,7 +247,8 @@ class Interchange:
     def _create_monitoring_channel(self) -> Optional[zmq.Socket]:
         if self.hub_address and self.hub_port:
             logger.info("Connecting to monitoring")
-            hub_channel = self.context.socket(zmq.DEALER)
+            # This is a one-off because monitoring is still unencrypted
+            hub_channel = zmq.Context().socket(zmq.DEALER)
             hub_channel.set_hwm(0)
             hub_channel.connect("tcp://{}:{}".format(self.hub_address, self.hub_port))
             logger.info("Monitoring enabled and connected to hub")
