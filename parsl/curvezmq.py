@@ -8,7 +8,7 @@ from zmq.auth.thread import ThreadAuthenticator
 logger = logging.getLogger(__name__)
 
 
-def get_certificates(certs_dir: str | os.PathLike, name: str) -> tuple[bytes, bytes]:
+def _get_certificates(certs_dir: str | os.PathLike, name: str) -> tuple[bytes, bytes]:
     secret_key_file = os.path.join(certs_dir, f"{name}.key_secret")
 
     try:
@@ -26,6 +26,7 @@ def get_certificates(certs_dir: str | os.PathLike, name: str) -> tuple[bytes, by
 
 class CurveZMQBase:
     def __init__(self, base_dir: str | os.PathLike) -> None:
+        self.base_dir = base_dir
         self.certs_dir = os.path.join(base_dir, "certificates")
         os.makedirs(self.certs_dir, exist_ok=True)  # Ensure it exists
         self.ctx = zmq.Context()
@@ -34,10 +35,16 @@ class CurveZMQBase:
     def term(self):
         for sock in self._sockets:
             sock.close()
+        self._sockets = set()
         self.ctx.term()
 
     def destroy(self):
         self.ctx.destroy()
+        self._sockets = set()
+
+    def recreate(self):
+        self.destroy()
+        self.ctx = zmq.Context()
 
 
 class CurveZMQServer(CurveZMQBase):
@@ -48,7 +55,7 @@ class CurveZMQServer(CurveZMQBase):
         self.auth_thread.configure_curve(domain="*", location=self.certs_dir)
 
     def socket(self, *args, **kwargs) -> zmq.Socket:
-        public_key, secret_key = get_certificates(
+        public_key, secret_key = _get_certificates(
             certs_dir=self.certs_dir, name="server"
         )
 
@@ -71,10 +78,12 @@ class CurveZMQServer(CurveZMQBase):
 
 class CurveZMQClient(CurveZMQBase):
     def socket(self, *args, **kwargs) -> zmq.Socket:
-        public_key, secret_key = get_certificates(
+        public_key, secret_key = _get_certificates(
             certs_dir=self.certs_dir, name="client"
         )
-        server_public_key, _ = get_certificates(certs_dir=self.certs_dir, name="server")
+        server_public_key, _ = _get_certificates(
+            certs_dir=self.certs_dir, name="server"
+        )
 
         sock = self.ctx.socket(*args, **kwargs)
         sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)

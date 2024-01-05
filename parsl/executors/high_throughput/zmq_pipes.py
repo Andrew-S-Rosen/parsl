@@ -12,15 +12,13 @@ logger = logging.getLogger(__name__)
 class CommandClient:
     """ CommandClient
     """
-    def __init__(self, zmq_client: CurveZMQClient, run_dir: str, ip_address, port_range):
+    def __init__(self, zmq_client: CurveZMQClient, ip_address, port_range):
         """
         Parameters
         ----------
 
         zmq_client: CurveZMQClient
             CurveZMQ client used to create secure sockets
-        run_dir: str
-            Path to run directory.
         ip_address: str
            IP address of the client (where Parsl runs)
         port_range: tuple(int, int)
@@ -28,7 +26,6 @@ class CommandClient:
 
         """
         self.zmq_client = zmq_client
-        self.run_dir = run_dir
         self.ip_address = ip_address
         self.port_range = port_range
         self.port = None
@@ -69,8 +66,7 @@ class CommandClient:
                 except zmq.ZMQError:
                     logger.exception("Potential ZMQ REQ-REP deadlock caught")
                     logger.info("Trying to reestablish context")
-                    self.zmq_client.destroy()
-                    self.zmq_client = CurveZMQClient(self.run_dir)
+                    self.zmq_client.recreate()
                     self.create_socket_and_bind()
                 else:
                     break

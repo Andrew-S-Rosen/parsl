@@ -329,10 +329,15 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
     def start(self):
         """Create the Interchange process and connect to it.
         """
-        zmq_client = CurveZMQClient(self.run_dir)
-        self.outgoing_q = zmq_pipes.TasksOutgoing(zmq_client, "127.0.0.1", self.interchange_port_range)
-        self.incoming_q = zmq_pipes.ResultsIncoming(zmq_client, "127.0.0.1", self.interchange_port_range)
-        self.command_client = zmq_pipes.CommandClient(zmq_client, self.run_dir, "127.0.0.1", self.interchange_port_range)
+        self.outgoing_q = zmq_pipes.TasksOutgoing(
+            CurveZMQClient(self.run_dir), "127.0.0.1", self.interchange_port_range
+        )
+        self.incoming_q = zmq_pipes.ResultsIncoming(
+            CurveZMQClient(self.run_dir), "127.0.0.1", self.interchange_port_range
+        )
+        self.command_client = zmq_pipes.CommandClient(
+            CurveZMQClient(self.run_dir), "127.0.0.1", self.interchange_port_range
+        )
 
         self._queue_management_thread = None
         self._start_queue_management_thread()
