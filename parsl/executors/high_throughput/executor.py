@@ -200,11 +200,13 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
                  poll_period: int = 10,
                  address_probe_timeout: Optional[int] = None,
                  worker_logdir_root: Optional[str] = None,
-                 block_error_handler: Union[bool, Callable[[BlockProviderExecutor, Dict[str, JobStatus]], None]] = True):
+                 block_error_handler: Union[bool, Callable[[BlockProviderExecutor, Dict[str, JobStatus]], None]] = True,
+                 encrypted: bool = True):
 
         logger.debug("Initializing HighThroughputExecutor")
 
         BlockProviderExecutor.__init__(self, provider=provider, block_error_handler=block_error_handler)
+        self.encrypted = encrypted
         self.label = label
         self.worker_debug = worker_debug
         self.storage_access = storage_access
@@ -260,7 +262,7 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
 
         if not launch_cmd:
             launch_cmd = (
-                "process_worker_pool.py {debug} {max_workers} "
+                "process_worker_pool.py {debug} {unencrypted} {max_workers} "
                 "-a {addresses} "
                 "-p {prefetch_capacity} "
                 "-c {cores_per_worker} "
@@ -268,6 +270,7 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
                 "--poll {poll_period} "
                 "--task_port={task_port} "
                 "--result_port={result_port} "
+                "--run_dir {run_dir} "
                 "--logdir={logdir} "
                 "--block_id={{block_id}} "
                 "--hb_period={heartbeat_period} "
@@ -285,6 +288,7 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
         """Compose the launch command and scale out the initial blocks.
         """
         debug_opts = "--debug" if self.worker_debug else ""
+        unencrypted_opts = "--unencrypted" if not self.encrypted else ""
         max_workers = "" if self.max_workers == float('inf') else "--max_workers={}".format(self.max_workers)
 
         address_probe_timeout_string = ""
@@ -295,6 +299,7 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
             worker_logdir = "{}/{}".format(self.worker_logdir_root, self.label)
 
         l_cmd = self.launch_cmd.format(debug=debug_opts,
+                                       unencrypted=unencrypted_opts,
                                        prefetch_capacity=self.prefetch_capacity,
                                        address_probe_timeout_string=address_probe_timeout_string,
                                        addresses=self.all_addresses,
@@ -330,13 +335,13 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
         """Create the Interchange process and connect to it.
         """
         self.outgoing_q = zmq_pipes.TasksOutgoing(
-            CurveZMQClient(self.run_dir), "127.0.0.1", self.interchange_port_range
+            CurveZMQClient(self.run_dir, self.encrypted), "127.0.0.1", self.interchange_port_range
         )
         self.incoming_q = zmq_pipes.ResultsIncoming(
-            CurveZMQClient(self.run_dir), "127.0.0.1", self.interchange_port_range
+            CurveZMQClient(self.run_dir, self.encrypted), "127.0.0.1", self.interchange_port_range
         )
         self.command_client = zmq_pipes.CommandClient(
-            CurveZMQClient(self.run_dir), "127.0.0.1", self.interchange_port_range
+            CurveZMQClient(self.run_dir, self.encrypted), "127.0.0.1", self.interchange_port_range
         )
 
         self._queue_management_thread = None
@@ -462,7 +467,8 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
                                                     "logdir": "{}/{}".format(self.run_dir, self.label),
                                                     "heartbeat_threshold": self.heartbeat_threshold,
                                                     "poll_period": self.poll_period,
-                                                    "logging_level": logging.DEBUG if self.worker_debug else logging.INFO
+                                                    "logging_level": logging.DEBUG if self.worker_debug else logging.INFO,
+                                                    "encrypted": self.encrypted,
                                                     },
                                             daemon=True,
                                             name="HTEX-Interchange"

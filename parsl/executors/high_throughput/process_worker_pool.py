@@ -66,7 +66,8 @@ class Manager:
                  cpu_affinity,
                  available_accelerators: Sequence[str],
                  run_dir: str,
-                 logdir: str):
+                 logdir: str,
+                 encrypted: bool):
         """
         Parameters
         ----------
@@ -148,7 +149,8 @@ class Manager:
 
         self.run_dir = run_dir
         self.logdir = logdir
-        self.zmq_client = CurveZMQClient(self.run_dir)
+        self.encrypted = encrypted
+        self.zmq_client = CurveZMQClient(self.run_dir, self.encrypted)
         self.task_incoming = self.zmq_client.socket(zmq.DEALER)
         self.task_incoming.setsockopt(zmq.IDENTITY, uid.encode('utf-8'))
         # Linger is set to 0, so that the manager can exit even when there might be
@@ -710,6 +712,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", action='store_true',
                         help="Enable logging at DEBUG level")
+    parser.add_argument("-s", "--unencrypted", action='store_true',
+                        help="Encrypt inter-process communication")
     parser.add_argument("-a", "--addresses", default='',
                         help="Comma separated list of addresses at which the interchange could be reached")
     parser.add_argument("--run_dir", required=True,
@@ -757,6 +761,7 @@ if __name__ == "__main__":
 
         logger.info("Python version: {}".format(sys.version))
         logger.info("Debug logging: {}".format(args.debug))
+        logger.info("Unencrypted: {}".format(args.unencrypted))
         logger.info("Run dir: {}".format(args.run_dir))
         logger.info("Log dir: {}".format(args.logdir))
         logger.info("Manager ID: {}".format(args.uid))
@@ -791,7 +796,8 @@ if __name__ == "__main__":
                           cpu_affinity=args.cpu_affinity,
                           available_accelerators=args.available_accelerators,
                           run_dir=args.run_dir,
-                          logdir=args.logdir)
+                          logdir=args.logdir,
+                          encrypted=not args.unencrypted)
         manager.start()
 
     except Exception:

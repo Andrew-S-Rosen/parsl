@@ -81,6 +81,7 @@ class Interchange:
                  logdir: str = ".",
                  logging_level: int = logging.INFO,
                  poll_period: int = 10,
+                 encrypted: bool = True,
                  ) -> None:
         """
         Parameters
@@ -137,10 +138,11 @@ class Interchange:
         self.client_address = client_address
         self.interchange_address: str = interchange_address or "*"
         self.poll_period = poll_period
+        self.encrypted = encrypted
 
         logger.info("Attempting connection to client at {} on ports: {},{},{}".format(
             client_address, client_ports[0], client_ports[1], client_ports[2]))
-        self.zmq_server = CurveZMQServer(self.run_dir)
+        self.zmq_server = CurveZMQServer(self.run_dir, self.encrypted)
         self.task_incoming = self.zmq_server.socket(zmq.DEALER)
         self.task_incoming.set_hwm(0)
         self.task_incoming.connect("tcp://{}:{}".format(client_address, client_ports[0]))
