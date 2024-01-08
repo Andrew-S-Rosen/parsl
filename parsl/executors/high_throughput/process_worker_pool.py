@@ -20,11 +20,10 @@ import multiprocessing
 from multiprocessing.managers import DictProxy
 from multiprocessing.sharedctypes import Synchronized
 
+from parsl import curvezmq
 from parsl.process_loggers import wrap_with_logs
-
 from parsl.version import VERSION as PARSL_VERSION
 from parsl.app.errors import RemoteExceptionWrapper
-from parsl.curvezmq import CurveZMQClient
 from parsl.executors.high_throughput.errors import WorkerLost
 from parsl.executors.high_throughput.probe import probe_addresses
 from parsl.multiprocessing import SpawnContext
@@ -150,15 +149,15 @@ class Manager:
         self.run_dir = run_dir
         self.logdir = logdir
         self.encrypted = encrypted
-        self.zmq_client = CurveZMQClient(self.run_dir, self.encrypted)
-        self.task_incoming = self.zmq_client.socket(zmq.DEALER)
+        self.zmq_context = curvezmq.ClientContext(self.run_dir, self.encrypted)
+        self.task_incoming = self.zmq_context.socket(zmq.DEALER)
         self.task_incoming.setsockopt(zmq.IDENTITY, uid.encode('utf-8'))
         # Linger is set to 0, so that the manager can exit even when there might be
         # messages in the pipe
         self.task_incoming.setsockopt(zmq.LINGER, 0)
         self.task_incoming.connect(task_q_url)
 
-        self.result_outgoing = self.zmq_client.socket(zmq.DEALER)
+        self.result_outgoing = self.zmq_context.socket(zmq.DEALER)
         self.result_outgoing.setsockopt(zmq.IDENTITY, uid.encode('utf-8'))
         self.result_outgoing.setsockopt(zmq.LINGER, 0)
         self.result_outgoing.connect(result_q_url)
@@ -479,7 +478,9 @@ class Manager:
             self.procs[proc_id].join()
             logger.debug("Worker {} joined successfully".format(self.procs[proc_id]))
 
-        self.zmq_client.term()
+        self.task_incoming.close()
+        self.result_outgoing.close()
+        self.zmq_context.term()
         delta = time.time() - start
         logger.info("process_worker_pool ran for {} seconds".format(delta))
         return

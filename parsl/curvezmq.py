@@ -24,44 +24,30 @@ def _get_certificates(certs_dir: str | os.PathLike, name: str) -> tuple[bytes, b
     return public_key, secret_key
 
 
-class CurveZMQBase:
+class BaseContext:
     def __init__(self, base_dir: str | os.PathLike, encrypted: bool = True) -> None:
         self.base_dir = base_dir
         self.encrypted = encrypted
-        self.ctx = zmq.Context()
-        self._sockets: set[zmq.Socket] = set()
-
+        self._ctx = zmq.Context()
         if encrypted:
             self.certs_dir = os.path.join(base_dir, "certificates")
             os.makedirs(self.certs_dir, exist_ok=True)  # Ensure dir exists
 
-    def term(self):
-        for sock in self._sockets:
-            sock.close()
-        self._sockets = set()
-        self.ctx.term()
 
-    def destroy(self):
-        self.ctx.destroy()
-        self._sockets = set()
-
-    def recreate(self):
-        self.destroy()
-        self.ctx = zmq.Context()
-
-
-class CurveZMQServer(CurveZMQBase):
+class ServerContext(BaseContext):
     def __init__(self, base_dir: str | os.PathLike, encrypted: bool = True) -> None:
         super().__init__(base_dir, encrypted)
         self.auth_thread = None
         if encrypted:
-            self.auth_thread = ThreadAuthenticator(self.ctx)
-            self.auth_thread.start()
-            self.auth_thread.configure_curve(domain="*", location=self.certs_dir)
+            self._start_auth_thread()
+
+    def _start_auth_thread(self):
+        self.auth_thread = ThreadAuthenticator(self._ctx)
+        self.auth_thread.start()
+        self.auth_thread.configure_curve(domain="*", location=self.certs_dir)
 
     def socket(self, *args, **kwargs) -> zmq.Socket:
-        sock = self.ctx.socket(*args, **kwargs)
-
+        sock = self._ctx.socket(*args, **kwargs)
         if self.encrypted:
             public_key, secret_key = _get_certificates(
                 certs_dir=self.certs_dir, name="server"
@@ -69,25 +55,28 @@ class CurveZMQServer(CurveZMQBase):
             sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)
             sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
             sock.setsockopt(zmq.CURVE_SERVER, True)  # Must come before bind
-
-        self._sockets.add(sock)
         return sock
 
     def term(self):
-        super().term()
+        self._ctx.term()
         if self.auth_thread:
             self.auth_thread.stop()
 
     def destroy(self):
-        super().destroy()
+        self._ctx.destroy()
         if self.auth_thread:
             self.auth_thread.stop()
 
+    def recreate(self):
+        self.destroy()
+        self._ctx = zmq.Context()
+        if self.encrypted:
+            self._start_auth_thread()
 
-class CurveZMQClient(CurveZMQBase):
+
+class ClientContext(BaseContext):
     def socket(self, *args, **kwargs) -> zmq.Socket:
-        sock = self.ctx.socket(*args, **kwargs)
-
+        sock = self._ctx.socket(*args, **kwargs)
         if self.encrypted:
             public_key, secret_key = _get_certificates(
                 certs_dir=self.certs_dir, name="client"
@@ -98,6 +87,14 @@ class CurveZMQClient(CurveZMQBase):
             sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)
             sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
             sock.setsockopt(zmq.CURVE_SERVERKEY, server_public_key)
-
-        self._sockets.add(sock)
         return sock
+
+    def term(self):
+        self._ctx.term()
+
+    def destroy(self):
+        self._ctx.destroy()
+
+    def recreate(self):
+        self.destroy()
+        self._ctx = zmq.Context()

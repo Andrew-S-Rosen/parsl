@@ -16,12 +16,12 @@ import json
 
 from typing import cast, Any, Dict, NoReturn, Sequence, Set, Optional, Tuple
 
+from parsl import curvezmq
 from parsl.utils import setproctitle
 from parsl.version import VERSION as PARSL_VERSION
 from parsl.serialize import serialize as serialize_object
 
 from parsl.app.errors import RemoteExceptionWrapper
-from parsl.curvezmq import CurveZMQServer
 from parsl.executors.high_throughput.manager_record import ManagerRecord
 from parsl.monitoring.message_type import MessageType
 from parsl.process_loggers import wrap_with_logs
@@ -142,15 +142,15 @@ class Interchange:
 
         logger.info("Attempting connection to client at {} on ports: {},{},{}".format(
             client_address, client_ports[0], client_ports[1], client_ports[2]))
-        self.zmq_server = CurveZMQServer(self.run_dir, self.encrypted)
-        self.task_incoming = self.zmq_server.socket(zmq.DEALER)
+        self.zmq_context = curvezmq.ServerContext(self.run_dir, self.encrypted)
+        self.task_incoming = self.zmq_context.socket(zmq.DEALER)
         self.task_incoming.set_hwm(0)
         self.task_incoming.connect("tcp://{}:{}".format(client_address, client_ports[0]))
-        self.results_outgoing = self.zmq_server.socket(zmq.DEALER)
+        self.results_outgoing = self.zmq_context.socket(zmq.DEALER)
         self.results_outgoing.set_hwm(0)
         self.results_outgoing.connect("tcp://{}:{}".format(client_address, client_ports[1]))
 
-        self.command_channel = self.zmq_server.socket(zmq.REP)
+        self.command_channel = self.zmq_context.socket(zmq.REP)
         self.command_channel.connect("tcp://{}:{}".format(client_address, client_ports[2]))
         logger.info("Connected to client")
 
@@ -163,9 +163,9 @@ class Interchange:
         self.worker_ports = worker_ports
         self.worker_port_range = worker_port_range
 
-        self.task_outgoing = self.zmq_server.socket(zmq.ROUTER)
+        self.task_outgoing = self.zmq_context.socket(zmq.ROUTER)
         self.task_outgoing.set_hwm(0)
-        self.results_incoming = self.zmq_server.socket(zmq.ROUTER)
+        self.results_incoming = self.zmq_context.socket(zmq.ROUTER)
         self.results_incoming.set_hwm(0)
 
         if self.worker_ports:

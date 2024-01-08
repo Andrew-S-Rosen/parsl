@@ -22,7 +22,7 @@ from parsl.executors.errors import (
     UnsupportedFeatureError
 )
 
-from parsl.curvezmq import CurveZMQClient
+from parsl import curvezmq
 from parsl.executors.status_handling import BlockProviderExecutor
 from parsl.providers.base import ExecutionProvider
 from parsl.data_provider.staging import Staging
@@ -335,13 +335,13 @@ class HighThroughputExecutor(BlockProviderExecutor, RepresentationMixin):
         """Create the Interchange process and connect to it.
         """
         self.outgoing_q = zmq_pipes.TasksOutgoing(
-            CurveZMQClient(self.run_dir, self.encrypted), "127.0.0.1", self.interchange_port_range
+            curvezmq.ClientContext(self.run_dir, self.encrypted), "127.0.0.1", self.interchange_port_range
         )
         self.incoming_q = zmq_pipes.ResultsIncoming(
-            CurveZMQClient(self.run_dir, self.encrypted), "127.0.0.1", self.interchange_port_range
+            curvezmq.ClientContext(self.run_dir, self.encrypted), "127.0.0.1", self.interchange_port_range
         )
         self.command_client = zmq_pipes.CommandClient(
-            CurveZMQClient(self.run_dir, self.encrypted), "127.0.0.1", self.interchange_port_range
+            curvezmq.ClientContext(self.run_dir, self.encrypted), "127.0.0.1", self.interchange_port_range
         )
 
         self._queue_management_thread = None
