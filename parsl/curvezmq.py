@@ -52,8 +52,11 @@ class ServerContext(BaseContext):
             public_key, secret_key = _get_certificates(
                 certs_dir=self.certs_dir, name="server"
             )
-            sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)
-            sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
+            try:
+                sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)
+                sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
+            except zmq.ZMQError:
+                raise ValueError("Invalid CurveZMQ key format")
             sock.setsockopt(zmq.CURVE_SERVER, True)  # Must come before bind
         return sock
 
@@ -84,9 +87,12 @@ class ClientContext(BaseContext):
             server_public_key, _ = _get_certificates(
                 certs_dir=self.certs_dir, name="server"
             )
-            sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)
-            sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
-            sock.setsockopt(zmq.CURVE_SERVERKEY, server_public_key)
+            try:
+                sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)
+                sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
+                sock.setsockopt(zmq.CURVE_SERVERKEY, server_public_key)
+            except zmq.ZMQError:
+                raise ValueError("Invalid CurveZMQ key format")
         return sock
 
     def term(self):
