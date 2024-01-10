@@ -478,8 +478,6 @@ class Manager:
             self.procs[proc_id].join()
             logger.debug("Worker {} joined successfully".format(self.procs[proc_id]))
 
-        self.task_incoming.close()
-        self.result_outgoing.close()
         self.zmq_context.term()
         delta = time.time() - start
         logger.info("process_worker_pool ran for {} seconds".format(delta))

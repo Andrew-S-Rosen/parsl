@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Union, Set
 
 import zmq
 import zmq.auth
@@ -8,40 +9,47 @@ from zmq.auth.thread import ThreadAuthenticator
 logger = logging.getLogger(__name__)
 
 
-def _get_certificates(certs_dir: str | os.PathLike, name: str) -> tuple[bytes, bytes]:
-    secret_key_file = os.path.join(certs_dir, f"{name}.key_secret")
-
+def _ensure_certificates(base_dir: str):
+    certs_dir = os.path.join(base_dir, "certificates")
     try:
-        public_key, secret_key = zmq.auth.load_certificate(secret_key_file)
-        if secret_key is None:
-            raise ValueError
-    except (OSError, ValueError):
-        logger.debug(f"Generating certificates for CurveZMQ ({name})")
-        _, secret_key_file = zmq.auth.create_certificates(certs_dir, name)
-        public_key, secret_key = zmq.auth.load_certificate(secret_key_file)
-        assert secret_key  # Satisfy mypy
+        os.mkdir(certs_dir)
+    except FileExistsError:
+        return certs_dir
+    os.chmod(certs_dir, 0o700)
 
+    logger.debug("Generating certificates for CurveZMQ")
+    zmq.auth.create_certificates(certs_dir, "server")
+    zmq.auth.create_certificates(certs_dir, "client")
+
+    return certs_dir
+
+
+def _load_certificate(certs_dir: Union[str, os.PathLike], name: str) -> tuple[bytes, bytes]:
+    secret_key_file = os.path.join(certs_dir, f"{name}.key_secret")
+    public_key, secret_key = zmq.auth.load_certificate(secret_key_file)
+    if secret_key is None:
+        raise ValueError(f"No secret key found in {secret_key_file}")
     return public_key, secret_key
 
 
 class BaseContext:
-    def __init__(self, base_dir: str | os.PathLike, encrypted: bool = True) -> None:
+    def __init__(self, base_dir: Union[str, os.PathLike], encrypted: bool = True) -> None:
         self.base_dir = base_dir
         self.encrypted = encrypted
         self._ctx = zmq.Context()
+        self._sockets: Set[zmq.Socket] = set()
         if encrypted:
-            self.certs_dir = os.path.join(base_dir, "certificates")
-            os.makedirs(self.certs_dir, exist_ok=True)  # Ensure dir exists
+            self.certs_dir = _ensure_certificates(base_dir)
 
 
 class ServerContext(BaseContext):
-    def __init__(self, base_dir: str | os.PathLike, encrypted: bool = True) -> None:
+    def __init__(self, base_dir: Union[str, os.PathLike], encrypted: bool = True) -> None:
         super().__init__(base_dir, encrypted)
-        self.auth_thread = None
         if encrypted:
             self._start_auth_thread()
 
     def _start_auth_thread(self):
+        logger.debug("Starting CurveZMQ thread authenticator")
         self.auth_thread = ThreadAuthenticator(self._ctx)
         self.auth_thread.start()
         self.auth_thread.configure_curve(domain="*", location=self.certs_dir)
@@ -49,7 +57,7 @@ class ServerContext(BaseContext):
     def socket(self, *args, **kwargs) -> zmq.Socket:
         sock = self._ctx.socket(*args, **kwargs)
         if self.encrypted:
-            public_key, secret_key = _get_certificates(
+            public_key, secret_key = _load_certificate(
                 certs_dir=self.certs_dir, name="server"
             )
             try:
@@ -58,17 +66,20 @@ class ServerContext(BaseContext):
             except zmq.ZMQError:
                 raise ValueError("Invalid CurveZMQ key format")
             sock.setsockopt(zmq.CURVE_SERVER, True)  # Must come before bind
+        self._sockets.add(sock)
         return sock
 
     def term(self):
-        self._ctx.term()
         if self.auth_thread:
             self.auth_thread.stop()
+        for sock in self._sockets:
+            sock.close()
+        self._ctx.term()
 
     def destroy(self):
-        self._ctx.destroy()
         if self.auth_thread:
             self.auth_thread.stop()
+        self._ctx.destroy()
 
     def recreate(self):
         self.destroy()
@@ -81,10 +92,10 @@ class ClientContext(BaseContext):
     def socket(self, *args, **kwargs) -> zmq.Socket:
         sock = self._ctx.socket(*args, **kwargs)
         if self.encrypted:
-            public_key, secret_key = _get_certificates(
+            public_key, secret_key = _load_certificate(
                 certs_dir=self.certs_dir, name="client"
             )
-            server_public_key, _ = _get_certificates(
+            server_public_key, _ = _load_certificate(
                 certs_dir=self.certs_dir, name="server"
             )
             try:
@@ -93,9 +104,12 @@ class ClientContext(BaseContext):
                 sock.setsockopt(zmq.CURVE_SERVERKEY, server_public_key)
             except zmq.ZMQError:
                 raise ValueError("Invalid CurveZMQ key format")
+        self._sockets.add(sock)
         return sock
 
     def term(self):
+        for sock in self._sockets:
+            sock.close()
         self._ctx.term()
 
     def destroy(self):
