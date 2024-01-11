@@ -54,14 +54,16 @@ class ServerContext(BaseContext):
         self.auth_thread.start()
         self.auth_thread.configure_curve(domain="*", location=self.certs_dir)
 
-    def socket(self, *args, **kwargs) -> zmq.Socket:
-        sock = self._ctx.socket(*args, **kwargs)
+    def socket(self, socket_type: int, *args, **kwargs) -> zmq.Socket:
+        sock = self._ctx.socket(socket_type, *args, **kwargs)
         if self.encrypted:
-            public_key, secret_key = _load_certificate(
+            _, secret_key = _load_certificate(
                 certs_dir=self.certs_dir, name="server"
             )
             try:
-                sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)
+                # The server public key is only needed by the client to
+                # encrypt messages and verify the server's identity
+                # Ref: http://curvezmq.org/page:read-the-docs
                 sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
             except zmq.ZMQError:
                 raise ValueError("Invalid CurveZMQ key format")
@@ -69,28 +71,28 @@ class ServerContext(BaseContext):
         self._sockets.add(sock)
         return sock
 
-    def term(self):
+    def term(self, linger: int | None = None):
         if self.auth_thread:
             self.auth_thread.stop()
         for sock in self._sockets:
-            sock.close()
+            sock.close(linger)
         self._ctx.term()
 
-    def destroy(self):
+    def destroy(self, linger: int | None = None):
         if self.auth_thread:
             self.auth_thread.stop()
-        self._ctx.destroy()
+        self._ctx.destroy(linger)
 
-    def recreate(self):
-        self.destroy()
+    def recreate(self, linger: int | None = None):
+        self.destroy(linger)
         self._ctx = zmq.Context()
         if self.encrypted:
             self._start_auth_thread()
 
 
 class ClientContext(BaseContext):
-    def socket(self, *args, **kwargs) -> zmq.Socket:
-        sock = self._ctx.socket(*args, **kwargs)
+    def socket(self, socket_type: int, *args, **kwargs) -> zmq.Socket:
+        sock = self._ctx.socket(socket_type, *args, **kwargs)
         if self.encrypted:
             public_key, secret_key = _load_certificate(
                 certs_dir=self.certs_dir, name="client"
@@ -107,14 +109,14 @@ class ClientContext(BaseContext):
         self._sockets.add(sock)
         return sock
 
-    def term(self):
+    def term(self, linger: int | None = None):
         for sock in self._sockets:
-            sock.close()
+            sock.close(linger)
         self._ctx.term()
 
-    def destroy(self):
-        self._ctx.destroy()
+    def destroy(self, linger: int | None = None):
+        self._ctx.destroy(linger)
 
-    def recreate(self):
-        self.destroy()
+    def recreate(self, linger: int | None = None):
+        self.destroy(linger)
         self._ctx = zmq.Context()
