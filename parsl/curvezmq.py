@@ -72,14 +72,14 @@ class ServerContext(BaseContext):
         return sock
 
     def term(self, linger: int | None = None):
-        if self.auth_thread:
+        if self.encrypted:
             self.auth_thread.stop()
         for sock in self._sockets:
             sock.close(linger)
         self._ctx.term()
 
     def destroy(self, linger: int | None = None):
-        if self.auth_thread:
+        if self.encrypted:
             self.auth_thread.stop()
         self._ctx.destroy(linger)
 

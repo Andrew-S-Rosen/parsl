@@ -12,35 +12,55 @@ from parsl import curvezmq
 ADDR = "tcp://127.0.0.1"
 
 
-@pytest.fixture
-def get_server_socket(tmpd_cwd: pathlib.Path):
-    ctx = curvezmq.ServerContext(tmpd_cwd)
-
-    def inner():
+def get_server_socket_factory(ctx: curvezmq.BaseContext):
+    def factory():
         sock = ctx.socket(zmq.PULL)
         sock.setsockopt(zmq.RCVTIMEO, 200)
         sock.setsockopt(zmq.LINGER, 0)
         port = sock.bind_to_random_port(ADDR)
         return sock, port
-
-    yield inner
-
-    ctx.destroy()
+    return factory
 
 
-@pytest.fixture
-def get_client_socket(tmpd_cwd: pathlib.Path):
-    ctx = curvezmq.ClientContext(tmpd_cwd)
-
-    def inner(port: int):
+def get_client_socket_factory(ctx: curvezmq.BaseContext):
+    def factory(port: int):
         sock = ctx.socket(zmq.PUSH)
         sock.setsockopt(zmq.SNDTIMEO, 200)
         sock.setsockopt(zmq.LINGER, 0)
         sock.connect(f"{ADDR}:{port}")
         return sock
+    return factory
 
-    yield inner
 
+@pytest.fixture
+def get_server_socket(tmpd_cwd: pathlib.Path):
+    ctx = curvezmq.ServerContext(tmpd_cwd, encrypted=True)
+    factory = get_server_socket_factory(ctx)
+    yield factory
+    ctx.destroy()
+
+
+@pytest.fixture
+def get_client_socket(tmpd_cwd: pathlib.Path):
+    ctx = curvezmq.ClientContext(tmpd_cwd, encrypted=True)
+    factory = get_client_socket_factory(ctx)
+    yield factory
+    ctx.destroy()
+
+
+@pytest.fixture
+def get_server_socket_unencrypted(tmpd_cwd: pathlib.Path):
+    ctx = curvezmq.ServerContext(tmpd_cwd, encrypted=False)
+    factory = get_server_socket_factory(ctx)
+    yield factory
+    ctx.destroy()
+
+
+@pytest.fixture
+def get_client_socket_unencrypted(tmpd_cwd: pathlib.Path):
+    ctx = curvezmq.ClientContext(tmpd_cwd, encrypted=False)
+    factory = get_client_socket_factory(ctx)
+    yield factory
     ctx.destroy()
 
 
@@ -52,7 +72,7 @@ def get_external_server_socket():
     auth_thread.start()
     auth_thread.configure_curve(domain="*", location=zmq.auth.CURVE_ALLOW_ANY)
 
-    def inner(secret_key: str):
+    def factory(secret_key: str):
         sock = ctx.socket(zmq.PULL)
         sock.setsockopt(zmq.RCVTIMEO, 200)
         sock.setsockopt(zmq.LINGER, 0)
@@ -61,7 +81,7 @@ def get_external_server_socket():
         port = sock.bind_to_random_port(ADDR)
         return sock, port
 
-    yield inner
+    yield factory
 
     auth_thread.stop()
     ctx.destroy()
@@ -71,7 +91,7 @@ def get_external_server_socket():
 def get_external_client_socket():
     ctx = zmq.Context()
 
-    def inner(public_key: str, secret_key: str, server_key: str, port: int):
+    def factory(public_key: str, secret_key: str, server_key: str, port: int):
         sock = ctx.socket(zmq.PUSH)
         sock.setsockopt(zmq.LINGER, 0)
         sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)
@@ -80,7 +100,7 @@ def get_external_client_socket():
         sock.connect(f"{ADDR}:{port}")
         return sock
 
-    yield inner
+    yield factory
 
     ctx.destroy()
 
@@ -92,6 +112,21 @@ def test_curvezmq_connection(
 ):
     server_socket, port = get_server_socket()
     client_socket = get_client_socket(port)
+
+    msg = b"howdy"
+    client_socket.send(msg)
+    recv = server_socket.recv()
+
+    assert recv == msg
+
+
+@pytest.mark.local
+def test_curvezmq_connection_unencrypted(
+    get_server_socket_unencrypted: Callable[[], Tuple[zmq.Socket, int]],
+    get_client_socket_unencrypted: Callable[[int], zmq.Socket],
+):
+    server_socket, port = get_server_socket_unencrypted()
+    client_socket = get_client_socket_unencrypted(port)
 
     msg = b"howdy"
     client_socket.send(msg)
