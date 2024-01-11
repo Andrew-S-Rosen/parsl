@@ -17,7 +17,6 @@ def get_server_socket(tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ServerContext(tmpd_cwd)
 
     def inner():
-        ctx = curvezmq.ServerContext(tmpd_cwd)
         sock = ctx.socket(zmq.PULL)
         sock.setsockopt(zmq.RCVTIMEO, 200)
         sock.setsockopt(zmq.LINGER, 0)
@@ -115,9 +114,9 @@ def test_curvezmq_invalid_key_format(
             get_server_socket()
         with pytest.raises(ValueError) as e2_info:
             get_client_socket(0)
-        e1, e2 = e1_info.exconly, e2_info.exconly
-        assert str(e1) == str(e2)
-        assert "Invalid CurveZMQ key format" in str(e1)
+    e1, e2 = e1_info.exconly, e2_info.exconly
+    assert str(e1) == str(e2)
+    assert "Invalid CurveZMQ key format" in str(e1)
 
 
 @pytest.mark.local
