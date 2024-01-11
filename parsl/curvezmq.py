@@ -9,7 +9,7 @@ from zmq.auth.thread import ThreadAuthenticator
 logger = logging.getLogger(__name__)
 
 
-def _ensure_certificates(base_dir: str):
+def _ensure_certificates(base_dir: str | os.PathLike):
     certs_dir = os.path.join(base_dir, "certificates")
     try:
         os.mkdir(certs_dir)
@@ -86,6 +86,7 @@ class ServerContext(BaseContext):
     def recreate(self, linger: int | None = None):
         self.destroy(linger)
         self._ctx = zmq.Context()
+        self._sockets = set()
         if self.encrypted:
             self._start_auth_thread()
 
@@ -120,3 +121,4 @@ class ClientContext(BaseContext):
     def recreate(self, linger: int | None = None):
         self.destroy(linger)
         self._ctx = zmq.Context()
+        self._sockets = set()
