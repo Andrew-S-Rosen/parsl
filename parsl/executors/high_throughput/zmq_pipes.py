@@ -78,7 +78,6 @@ class CommandClient:
         return reply
 
     def close(self):
-        self.zmq_socket.close()
         self.zmq_context.term()
 
 
@@ -130,7 +129,6 @@ class TasksOutgoing:
                 logger.debug("Not sending due to non-ready zmq pipe, timeout: {} ms".format(timeout_ms))
 
     def close(self):
-        self.zmq_socket.close()
         self.zmq_context.term()
 
 
@@ -165,5 +163,4 @@ class ResultsIncoming:
         return m
 
     def close(self):
-        self.results_receiver.close()
         self.zmq_context.term()

@@ -58,7 +58,7 @@ class BaseContext(metaclass=ABCMeta):
     def term(self, linger: int | None = None):
         for sock in self._sockets:
             sock.close(linger)
-        self._ctx.term()
+        self._ctx.term(linger)
 
     def destroy(self, linger: int | None = None):
         self._ctx.destroy(linger)
@@ -101,19 +101,15 @@ class ServerContext(BaseContext):
     def term(self, linger: int | None = None):
         if self.encrypted:
             self.auth_thread.stop()
-        for sock in self._sockets:
-            sock.close(linger)
-        self._ctx.term()
+        super().term(linger)
 
     def destroy(self, linger: int | None = None):
         if self.encrypted:
             self.auth_thread.stop()
-        self._ctx.destroy(linger)
+        super().destroy(linger)
 
     def recreate(self, linger: int | None = None):
-        self.destroy(linger)
-        self._ctx = zmq.Context()
-        self._sockets = set()
+        super().recreate(linger)
         if self.encrypted:
             self._start_auth_thread()
 
