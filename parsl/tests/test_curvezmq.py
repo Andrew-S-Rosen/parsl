@@ -123,7 +123,7 @@ def test_ensure_certificates(tmpd_cwd: pathlib.Path):
 @pytest.mark.local
 @pytest.mark.parametrize("encrypted", (True, False))
 @mock.patch.object(curvezmq, "_ensure_certificates")
-def test_curvezmq_client_context_init(
+def test_client_context_init(
     mock_ensure_certs: mock.MagicMock, encrypted: bool, tmpd_cwd: pathlib.Path
 ):
     certs_dir = "/path/to/certs/dir"
@@ -147,7 +147,7 @@ def test_curvezmq_client_context_init(
 @pytest.mark.local
 @pytest.mark.parametrize("encrypted", (True, False))
 @mock.patch.object(curvezmq, "_ensure_certificates")
-def test_curvezmq_server_context_init(
+def test_server_context_init(
     mock_ensure_certs: mock.MagicMock, encrypted: bool, tmpd_cwd: pathlib.Path
 ):
     certs_dir = "/path/to/certs/dir"
@@ -169,7 +169,7 @@ def test_curvezmq_server_context_init(
 @pytest.mark.local
 @pytest.mark.parametrize("encrypted", (True, False))
 @pytest.mark.parametrize("method", ("term", "destroy"))
-def test_curvezmq_client_context_term_destroy(
+def test_client_context_term_destroy(
     encrypted: bool, method: str, tmpd_cwd: pathlib.Path
 ):
     ctx = curvezmq.ClientContext(tmpd_cwd, encrypted)
@@ -187,7 +187,7 @@ def test_curvezmq_client_context_term_destroy(
 @pytest.mark.local
 @pytest.mark.parametrize("encrypted", (True, False))
 @pytest.mark.parametrize("method", ("term", "destroy"))
-def test_curvezmq_server_context_term_destroy(
+def test_server_context_term_destroy(
     encrypted: bool, method: str, tmpd_cwd: pathlib.Path
 ):
     ctx = curvezmq.ServerContext(tmpd_cwd, encrypted)
@@ -208,7 +208,7 @@ def test_curvezmq_server_context_term_destroy(
 
 @pytest.mark.local
 @pytest.mark.parametrize("encrypted", (True, False))
-def test_curvezmq_client_context_recreate(encrypted: bool, tmpd_cwd: pathlib.Path):
+def test_client_context_recreate(encrypted: bool, tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ClientContext(tmpd_cwd, encrypted)
     hidden_ctx = ctx._ctx
     sock = ctx.socket(zmq.REQ)
@@ -229,7 +229,7 @@ def test_curvezmq_client_context_recreate(encrypted: bool, tmpd_cwd: pathlib.Pat
 
 @pytest.mark.local
 @pytest.mark.parametrize("encrypted", (True, False))
-def test_curvezmq_server_context_recreate(encrypted: bool, tmpd_cwd: pathlib.Path):
+def test_server_context_recreate(encrypted: bool, tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ServerContext(tmpd_cwd, encrypted)
     hidden_ctx = ctx._ctx
     sock = ctx.socket(zmq.REP)
@@ -255,7 +255,7 @@ def test_curvezmq_server_context_recreate(encrypted: bool, tmpd_cwd: pathlib.Pat
 
 
 @pytest.mark.local
-def test_curvezmq_connection(
+def test_connection(
     get_server_socket: Callable[[], Tuple[zmq.Socket, int]],
     get_client_socket: Callable[[int], zmq.Socket],
 ):
@@ -270,7 +270,7 @@ def test_curvezmq_connection(
 
 
 @pytest.mark.local
-def test_curvezmq_connection_unencrypted(
+def test_connection_unencrypted(
     get_server_socket_unencrypted: Callable[[], Tuple[zmq.Socket, int]],
     get_client_socket_unencrypted: Callable[[int], zmq.Socket],
 ):
@@ -286,7 +286,7 @@ def test_curvezmq_connection_unencrypted(
 
 @pytest.mark.local
 @mock.patch.object(curvezmq, "_load_certificate")
-def test_curvezmq_invalid_key_format(
+def test_invalid_key_format(
     mock_load_cert,
     get_server_socket: Callable[[], Tuple[zmq.Socket, int]],
     get_client_socket: Callable[[int], zmq.Socket],
@@ -304,7 +304,7 @@ def test_curvezmq_invalid_key_format(
 
 
 @pytest.mark.local
-def test_curvezmq_invalid_client_keys(
+def test_invalid_client_keys(
     get_server_socket: Callable[[], Tuple[zmq.Socket, int]],
     get_external_client_socket: Callable[[str, str, str, int], zmq.Socket],
     tmpd_cwd: pathlib.Path,
@@ -344,7 +344,7 @@ def test_curvezmq_invalid_client_keys(
 
 
 @pytest.mark.local
-def test_curvezmq_invalid_server_key(
+def test_invalid_server_key(
     get_client_socket: Callable[[int], zmq.Socket],
     get_external_server_socket: Callable[[str], Tuple[zmq.Socket, int]],
     tmpd_cwd: pathlib.Path,

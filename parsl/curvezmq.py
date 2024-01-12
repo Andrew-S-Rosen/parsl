@@ -24,7 +24,9 @@ def _ensure_certificates(base_dir: str | os.PathLike):
     return certs_dir
 
 
-def _load_certificate(certs_dir: Union[str, os.PathLike], name: str) -> tuple[bytes, bytes]:
+def _load_certificate(
+    certs_dir: Union[str, os.PathLike], name: str
+) -> tuple[bytes, bytes]:
     secret_key_file = os.path.join(certs_dir, f"{name}.key_secret")
     public_key, secret_key = zmq.auth.load_certificate(secret_key_file)
     if secret_key is None:
@@ -33,7 +35,9 @@ def _load_certificate(certs_dir: Union[str, os.PathLike], name: str) -> tuple[by
 
 
 class BaseContext:
-    def __init__(self, base_dir: Union[str, os.PathLike], encrypted: bool = True) -> None:
+    def __init__(
+        self, base_dir: Union[str, os.PathLike], encrypted: bool = True
+    ) -> None:
         self.base_dir = base_dir
         self.encrypted = encrypted
         self._ctx = zmq.Context()
@@ -41,9 +45,30 @@ class BaseContext:
         if encrypted:
             self.certs_dir = _ensure_certificates(base_dir)
 
+    def __del__(self):
+        self.destroy()
+
+    def socket(self, socket_type: int, *args, **kwargs) -> zmq.Socket:
+        ...
+
+    def term(self, linger: int | None = None):
+        for sock in self._sockets:
+            sock.close(linger)
+        self._ctx.term()
+
+    def destroy(self, linger: int | None = None):
+        self._ctx.destroy(linger)
+
+    def recreate(self, linger: int | None = None):
+        self.destroy(linger)
+        self._ctx = zmq.Context()
+        self._sockets = set()
+
 
 class ServerContext(BaseContext):
-    def __init__(self, base_dir: Union[str, os.PathLike], encrypted: bool = True) -> None:
+    def __init__(
+        self, base_dir: Union[str, os.PathLike], encrypted: bool = True
+    ) -> None:
         super().__init__(base_dir, encrypted)
         if encrypted:
             self._start_auth_thread()
@@ -57,9 +82,7 @@ class ServerContext(BaseContext):
     def socket(self, socket_type: int, *args, **kwargs) -> zmq.Socket:
         sock = self._ctx.socket(socket_type, *args, **kwargs)
         if self.encrypted:
-            _, secret_key = _load_certificate(
-                certs_dir=self.certs_dir, name="server"
-            )
+            _, secret_key = _load_certificate(certs_dir=self.certs_dir, name="server")
             try:
                 # The server public key is only needed by the client to
                 # encrypt messages and verify the server's identity
@@ -109,16 +132,3 @@ class ClientContext(BaseContext):
                 raise ValueError("Invalid CurveZMQ key format")
         self._sockets.add(sock)
         return sock
-
-    def term(self, linger: int | None = None):
-        for sock in self._sockets:
-            sock.close(linger)
-        self._ctx.term()
-
-    def destroy(self, linger: int | None = None):
-        self._ctx.destroy(linger)
-
-    def recreate(self, linger: int | None = None):
-        self.destroy(linger)
-        self._ctx = zmq.Context()
-        self._sockets = set()

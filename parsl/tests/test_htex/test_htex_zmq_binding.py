@@ -1,9 +1,10 @@
-import logging
+from unittest import mock
 
 import psutil
 import pytest
 import zmq
 
+from parsl import curvezmq
 from parsl.executors.high_throughput.interchange import Interchange
 
 
@@ -44,3 +45,11 @@ def test_limited_interface_binding():
     matched_conns = [conn for conn in conns if conn.laddr.port == ix.worker_result_port]
     assert len(matched_conns) == 1
     assert matched_conns[0].laddr.ip == address
+
+
+@mock.patch.object(curvezmq.ServerContext, "socket", return_value=mock.MagicMock())
+def test_interchange_curvezmq_sockets(mock_socket: mock.MagicMock):
+    address = "127.0.0.1"
+    ix = Interchange(interchange_address=address)
+    assert isinstance(ix.zmq_context, curvezmq.ServerContext)
+    assert mock_socket.call_count == 5

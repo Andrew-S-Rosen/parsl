@@ -388,6 +388,7 @@ class Interchange:
             self.expire_bad_managers(interesting_managers, hub_channel)
             self.process_tasks_to_send(interesting_managers)
 
+        self.zmq_context.destroy()
         delta = time.time() - start
         logger.info("Processed {} tasks in {} seconds".format(self.count, delta))
         logger.warning("Exiting")
