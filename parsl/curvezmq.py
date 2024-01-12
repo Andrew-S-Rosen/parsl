@@ -1,6 +1,7 @@
 import logging
 import os
 from abc import ABCMeta, abstractmethod
+from functools import lru_cache
 from typing import Union, Set
 
 import zmq
@@ -25,6 +26,7 @@ def _ensure_certificates(base_dir: str | os.PathLike):
     return certs_dir
 
 
+@lru_cache
 def _load_certificate(
     certs_dir: Union[str, os.PathLike], name: str
 ) -> tuple[bytes, bytes]:
