@@ -293,7 +293,7 @@ def test_invalid_client_keys(
     public_key, secret_key = curvezmq._load_certificate(certs_dir, "client")
     server_key, _ = curvezmq._load_certificate(certs_dir, "server")
 
-    BAD_KEY = b"a" * 40
+    BAD_PUB_KEY, BAD_SEC_KEY = zmq.curve_keypair()
     msg = b"howdy"
 
     client_socket = get_external_client_socket(
@@ -308,19 +308,8 @@ def test_invalid_client_keys(
 
     client_socket = get_external_client_socket(
         zmq_ctx,
-        BAD_KEY,
-        secret_key,
-        server_key,
-        port,
-    )
-    client_socket.send(msg)
-    with pytest.raises(zmq.Again):
-        server_socket.recv()
-
-    client_socket = get_external_client_socket(
-        zmq_ctx,
-        public_key,
-        BAD_KEY,
+        BAD_PUB_KEY,
+        BAD_SEC_KEY,
         server_key,
         port,
     )
@@ -332,7 +321,7 @@ def test_invalid_client_keys(
         zmq_ctx,
         public_key,
         secret_key,
-        BAD_KEY,
+        BAD_PUB_KEY,
         port,
     )
     client_socket.send(msg)
@@ -360,7 +349,7 @@ def test_invalid_server_key(
     certs_dir = curvezmq._ensure_certificates(tmpd_cwd)
     _, secret_key = curvezmq._load_certificate(certs_dir, "server")
 
-    BAD_KEY = b"a" * 40
+    _, BAD_SEC_KEY = zmq.curve_keypair()
     msg = b"howdy"
 
     server_socket, port = get_external_server_socket(zmq_ctx, secret_key)
@@ -368,7 +357,7 @@ def test_invalid_server_key(
     client_socket.send(msg)
     assert server_socket.recv() == msg
 
-    server_socket, port = get_external_server_socket(zmq_ctx, BAD_KEY)
+    server_socket, port = get_external_server_socket(zmq_ctx, BAD_SEC_KEY)
     client_socket = get_client_socket(client_ctx, port)
     client_socket.send(msg)
     with pytest.raises(zmq.Again):
