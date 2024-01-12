@@ -1,6 +1,5 @@
 import os
 import pathlib
-from typing import Callable, Tuple
 from unittest import mock
 
 import pytest
@@ -13,98 +12,80 @@ from parsl import curvezmq
 ADDR = "tcp://127.0.0.1"
 
 
-def _get_server_socket_factory(ctx: curvezmq.BaseContext):
-    def factory():
-        sock = ctx.socket(zmq.PULL)
-        sock.setsockopt(zmq.RCVTIMEO, 200)
-        sock.setsockopt(zmq.LINGER, 0)
-        port = sock.bind_to_random_port(ADDR)
-        return sock, port
-
-    return factory
+def get_server_socket(ctx: curvezmq.ServerContext):
+    sock = ctx.socket(zmq.PULL)
+    sock.setsockopt(zmq.RCVTIMEO, 200)
+    sock.setsockopt(zmq.LINGER, 0)
+    port = sock.bind_to_random_port(ADDR)
+    return sock, port
 
 
-def _get_client_socket_factory(ctx: curvezmq.BaseContext):
-    def factory(port: int):
-        sock = ctx.socket(zmq.PUSH)
-        sock.setsockopt(zmq.SNDTIMEO, 200)
-        sock.setsockopt(zmq.LINGER, 0)
-        sock.connect(f"{ADDR}:{port}")
-        return sock
+def get_client_socket(ctx: curvezmq.ClientContext, port: int):
+    sock = ctx.socket(zmq.PUSH)
+    sock.setsockopt(zmq.SNDTIMEO, 200)
+    sock.setsockopt(zmq.LINGER, 0)
+    sock.connect(f"{ADDR}:{port}")
+    return sock
 
-    return factory
+
+def get_external_server_socket(ctx: curvezmq.ServerContext, secret_key: str):
+    sock = ctx.socket(zmq.PULL)
+    sock.setsockopt(zmq.RCVTIMEO, 200)
+    sock.setsockopt(zmq.LINGER, 0)
+    sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
+    sock.setsockopt(zmq.CURVE_SERVER, True)
+    port = sock.bind_to_random_port(ADDR)
+    return sock, port
+
+
+def get_external_client_socket(
+    ctx: curvezmq.ClientContext,
+    public_key: str,
+    secret_key: str,
+    server_key: str,
+    port: int,
+):
+    sock = ctx.socket(zmq.PUSH)
+    sock.setsockopt(zmq.LINGER, 0)
+    sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)
+    sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
+    sock.setsockopt(zmq.CURVE_SERVERKEY, server_key)
+    sock.connect(f"{ADDR}:{port}")
+    return sock
 
 
 @pytest.fixture
-def get_server_socket(tmpd_cwd: pathlib.Path):
-    ctx = curvezmq.ServerContext(tmpd_cwd, encrypted=True)
-    factory = _get_server_socket_factory(ctx)
-    yield factory
+def server_ctx(tmpd_cwd: pathlib.Path):
+    ctx = curvezmq.ServerContext(tmpd_cwd)
+    yield ctx
     ctx.destroy()
 
 
 @pytest.fixture
-def get_client_socket(tmpd_cwd: pathlib.Path):
-    ctx = curvezmq.ClientContext(tmpd_cwd, encrypted=True)
-    factory = _get_client_socket_factory(ctx)
-    yield factory
+def client_ctx(tmpd_cwd: pathlib.Path):
+    ctx = curvezmq.ClientContext(tmpd_cwd)
+    yield ctx
     ctx.destroy()
 
 
 @pytest.fixture
-def get_server_socket_unencrypted(tmpd_cwd: pathlib.Path):
+def server_ctx_unencrypted(tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ServerContext(tmpd_cwd, encrypted=False)
-    factory = _get_server_socket_factory(ctx)
-    yield factory
+    yield ctx
     ctx.destroy()
 
 
 @pytest.fixture
-def get_client_socket_unencrypted(tmpd_cwd: pathlib.Path):
+def client_ctx_unencrypted(tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ClientContext(tmpd_cwd, encrypted=False)
-    factory = _get_client_socket_factory(ctx)
-    yield factory
+    yield ctx
     ctx.destroy()
 
 
 @pytest.fixture
-def get_external_server_socket():
+def zmq_ctx():
     ctx = zmq.Context()
-
-    auth_thread = ThreadAuthenticator(ctx)
-    auth_thread.start()
-    auth_thread.configure_curve(domain="*", location=zmq.auth.CURVE_ALLOW_ANY)
-
-    def factory(secret_key: str):
-        sock = ctx.socket(zmq.PULL)
-        sock.setsockopt(zmq.RCVTIMEO, 200)
-        sock.setsockopt(zmq.LINGER, 0)
-        sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
-        sock.setsockopt(zmq.CURVE_SERVER, True)
-        port = sock.bind_to_random_port(ADDR)
-        return sock, port
-
-    yield factory
-
-    auth_thread.stop()
-    ctx.destroy()
-
-
-@pytest.fixture
-def get_external_client_socket():
-    ctx = zmq.Context()
-
-    def factory(public_key: str, secret_key: str, server_key: str, port: int):
-        sock = ctx.socket(zmq.PUSH)
-        sock.setsockopt(zmq.LINGER, 0)
-        sock.setsockopt(zmq.CURVE_PUBLICKEY, public_key)
-        sock.setsockopt(zmq.CURVE_SECRETKEY, secret_key)
-        sock.setsockopt(zmq.CURVE_SERVERKEY, server_key)
-        sock.connect(f"{ADDR}:{port}")
-        return sock
-
-    yield factory
-
+    yield ctx
     ctx.destroy()
 
 
@@ -256,11 +237,10 @@ def test_server_context_recreate(encrypted: bool, tmpd_cwd: pathlib.Path):
 
 @pytest.mark.local
 def test_connection(
-    get_server_socket: Callable[[], Tuple[zmq.Socket, int]],
-    get_client_socket: Callable[[int], zmq.Socket],
+    server_ctx: curvezmq.ServerContext, client_ctx: curvezmq.ClientContext
 ):
-    server_socket, port = get_server_socket()
-    client_socket = get_client_socket(port)
+    server_socket, port = get_server_socket(server_ctx)
+    client_socket = get_client_socket(client_ctx, port)
 
     msg = b"howdy"
     client_socket.send(msg)
@@ -271,11 +251,11 @@ def test_connection(
 
 @pytest.mark.local
 def test_connection_unencrypted(
-    get_server_socket_unencrypted: Callable[[], Tuple[zmq.Socket, int]],
-    get_client_socket_unencrypted: Callable[[int], zmq.Socket],
+    server_ctx_unencrypted: curvezmq.ServerContext,
+    client_ctx_unencrypted: curvezmq.ClientContext,
 ):
-    server_socket, port = get_server_socket_unencrypted()
-    client_socket = get_client_socket_unencrypted(port)
+    server_socket, port = get_server_socket(server_ctx_unencrypted)
+    client_socket = get_client_socket(client_ctx_unencrypted, port)
 
     msg = b"howdy"
     client_socket.send(msg)
@@ -288,15 +268,15 @@ def test_connection_unencrypted(
 @mock.patch.object(curvezmq, "_load_certificate")
 def test_invalid_key_format(
     mock_load_cert,
-    get_server_socket: Callable[[], Tuple[zmq.Socket, int]],
-    get_client_socket: Callable[[int], zmq.Socket],
+    server_ctx: curvezmq.ServerContext,
+    client_ctx: curvezmq.ClientContext,
 ):
     mock_load_cert.return_value = (b"badkey", b"badkey")
 
     with pytest.raises(ValueError) as e1_info:
-        get_server_socket()
+        server_ctx.socket(zmq.REP)
     with pytest.raises(ValueError) as e2_info:
-        get_client_socket(0)
+        client_ctx.socket(zmq.REQ)
     e1, e2 = e1_info.exconly, e2_info.exconly
 
     assert str(e1) == str(e2)
@@ -305,11 +285,9 @@ def test_invalid_key_format(
 
 @pytest.mark.local
 def test_invalid_client_keys(
-    get_server_socket: Callable[[], Tuple[zmq.Socket, int]],
-    get_external_client_socket: Callable[[str, str, str, int], zmq.Socket],
-    tmpd_cwd: pathlib.Path,
+    server_ctx: curvezmq.ServerContext, zmq_ctx: zmq.Context, tmpd_cwd: pathlib.Path
 ):
-    server_socket, port = get_server_socket()
+    server_socket, port = get_server_socket(server_ctx)
 
     certs_dir = curvezmq._ensure_certificates(tmpd_cwd)
     public_key, secret_key = curvezmq._load_certificate(certs_dir, "client")
@@ -318,35 +296,65 @@ def test_invalid_client_keys(
     BAD_KEY = b"a" * 40
     msg = b"howdy"
 
-    client_socket = get_external_client_socket(public_key, secret_key, server_key, port)
+    client_socket = get_external_client_socket(
+        zmq_ctx,
+        public_key,
+        secret_key,
+        server_key,
+        port,
+    )
     client_socket.send(msg)
     assert server_socket.recv() == msg
 
-    client_socket = get_external_client_socket(BAD_KEY, secret_key, server_key, port)
+    client_socket = get_external_client_socket(
+        zmq_ctx,
+        BAD_KEY,
+        secret_key,
+        server_key,
+        port,
+    )
     client_socket.send(msg)
     with pytest.raises(zmq.Again):
         server_socket.recv()
 
-    client_socket = get_external_client_socket(public_key, BAD_KEY, server_key, port)
+    client_socket = get_external_client_socket(
+        zmq_ctx,
+        public_key,
+        BAD_KEY,
+        server_key,
+        port,
+    )
     client_socket.send(msg)
     with pytest.raises(zmq.Again):
         server_socket.recv()
 
-    client_socket = get_external_client_socket(public_key, secret_key, BAD_KEY, port)
+    client_socket = get_external_client_socket(
+        zmq_ctx,
+        public_key,
+        secret_key,
+        BAD_KEY,
+        port,
+    )
     client_socket.send(msg)
     with pytest.raises(zmq.Again):
         server_socket.recv()
 
     # Ensure sockets are operational
-    client_socket = get_external_client_socket(public_key, secret_key, server_key, port)
+    client_socket = get_external_client_socket(
+        zmq_ctx,
+        public_key,
+        secret_key,
+        server_key,
+        port,
+    )
     client_socket.send(msg)
     assert server_socket.recv() == msg
 
 
 @pytest.mark.local
 def test_invalid_server_key(
-    get_client_socket: Callable[[int], zmq.Socket],
-    get_external_server_socket: Callable[[str], Tuple[zmq.Socket, int]],
+    client_ctx: curvezmq.ClientContext,
+    zmq_ctx: zmq.Context,
     tmpd_cwd: pathlib.Path,
 ):
     certs_dir = curvezmq._ensure_certificates(tmpd_cwd)
@@ -355,19 +363,19 @@ def test_invalid_server_key(
     BAD_KEY = b"a" * 40
     msg = b"howdy"
 
-    server_socket, port = get_external_server_socket(secret_key)
-    client_socket = get_client_socket(port)
+    server_socket, port = get_external_server_socket(zmq_ctx, secret_key)
+    client_socket = get_client_socket(client_ctx, port)
     client_socket.send(msg)
     assert server_socket.recv() == msg
 
-    server_socket, port = get_external_server_socket(BAD_KEY)
-    client_socket = get_client_socket(port)
+    server_socket, port = get_external_server_socket(zmq_ctx, BAD_KEY)
+    client_socket = get_client_socket(client_ctx, port)
     client_socket.send(msg)
     with pytest.raises(zmq.Again):
         server_socket.recv()
 
     # Ensure sockets are operational
-    server_socket, port = get_external_server_socket(secret_key)
-    client_socket = get_client_socket(port)
+    server_socket, port = get_external_server_socket(zmq_ctx, secret_key)
+    client_socket = get_client_socket(client_ctx, port)
     client_socket.send(msg)
     assert server_socket.recv() == msg

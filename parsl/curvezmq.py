@@ -1,5 +1,6 @@
 import logging
 import os
+from abc import ABCMeta, abstractmethod
 from typing import Union, Set
 
 import zmq
@@ -34,7 +35,7 @@ def _load_certificate(
     return public_key, secret_key
 
 
-class BaseContext:
+class BaseContext(metaclass=ABCMeta):
     def __init__(
         self, base_dir: Union[str, os.PathLike], encrypted: bool = True
     ) -> None:
@@ -48,6 +49,7 @@ class BaseContext:
     def __del__(self):
         self.destroy()
 
+    @abstractmethod
     def socket(self, socket_type: int, *args, **kwargs) -> zmq.Socket:
         ...
 
