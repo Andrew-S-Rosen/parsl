@@ -1,3 +1,4 @@
+import os
 import pathlib
 from typing import Callable, Tuple
 from unittest import mock
@@ -12,7 +13,7 @@ from parsl import curvezmq
 ADDR = "tcp://127.0.0.1"
 
 
-def get_server_socket_factory(ctx: curvezmq.BaseContext):
+def _get_server_socket_factory(ctx: curvezmq.BaseContext):
     def factory():
         sock = ctx.socket(zmq.PULL)
         sock.setsockopt(zmq.RCVTIMEO, 200)
@@ -23,7 +24,7 @@ def get_server_socket_factory(ctx: curvezmq.BaseContext):
     return factory
 
 
-def get_client_socket_factory(ctx: curvezmq.BaseContext):
+def _get_client_socket_factory(ctx: curvezmq.BaseContext):
     def factory(port: int):
         sock = ctx.socket(zmq.PUSH)
         sock.setsockopt(zmq.SNDTIMEO, 200)
@@ -37,7 +38,7 @@ def get_client_socket_factory(ctx: curvezmq.BaseContext):
 @pytest.fixture
 def get_server_socket(tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ServerContext(tmpd_cwd, encrypted=True)
-    factory = get_server_socket_factory(ctx)
+    factory = _get_server_socket_factory(ctx)
     yield factory
     ctx.destroy()
 
@@ -45,7 +46,7 @@ def get_server_socket(tmpd_cwd: pathlib.Path):
 @pytest.fixture
 def get_client_socket(tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ClientContext(tmpd_cwd, encrypted=True)
-    factory = get_client_socket_factory(ctx)
+    factory = _get_client_socket_factory(ctx)
     yield factory
     ctx.destroy()
 
@@ -53,7 +54,7 @@ def get_client_socket(tmpd_cwd: pathlib.Path):
 @pytest.fixture
 def get_server_socket_unencrypted(tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ServerContext(tmpd_cwd, encrypted=False)
-    factory = get_server_socket_factory(ctx)
+    factory = _get_server_socket_factory(ctx)
     yield factory
     ctx.destroy()
 
@@ -61,7 +62,7 @@ def get_server_socket_unencrypted(tmpd_cwd: pathlib.Path):
 @pytest.fixture
 def get_client_socket_unencrypted(tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ClientContext(tmpd_cwd, encrypted=False)
-    factory = get_client_socket_factory(ctx)
+    factory = _get_client_socket_factory(ctx)
     yield factory
     ctx.destroy()
 
@@ -105,6 +106,18 @@ def get_external_client_socket():
     yield factory
 
     ctx.destroy()
+
+
+@pytest.mark.local
+def test_ensure_certificates(tmpd_cwd: pathlib.Path):
+    certs_dir = tmpd_cwd / "certificates"
+    assert not os.path.exists(certs_dir)
+
+    ret = curvezmq._ensure_certificates(tmpd_cwd)
+
+    assert str(certs_dir) == ret
+    assert os.path.exists(certs_dir)
+    assert len(os.listdir(certs_dir)) == 4
 
 
 @pytest.mark.local
@@ -195,9 +208,7 @@ def test_curvezmq_server_context_term_destroy(
 
 @pytest.mark.local
 @pytest.mark.parametrize("encrypted", (True, False))
-def test_curvezmq_client_context_recreate(
-    encrypted: bool, tmpd_cwd: pathlib.Path
-):
+def test_curvezmq_client_context_recreate(encrypted: bool, tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ClientContext(tmpd_cwd, encrypted)
     hidden_ctx = ctx._ctx
     sock = ctx.socket(zmq.REQ)
@@ -218,9 +229,7 @@ def test_curvezmq_client_context_recreate(
 
 @pytest.mark.local
 @pytest.mark.parametrize("encrypted", (True, False))
-def test_curvezmq_server_context_recreate(
-    encrypted: bool, tmpd_cwd: pathlib.Path
-):
+def test_curvezmq_server_context_recreate(encrypted: bool, tmpd_cwd: pathlib.Path):
     ctx = curvezmq.ServerContext(tmpd_cwd, encrypted)
     hidden_ctx = ctx._ctx
     sock = ctx.socket(zmq.REP)
